@@ -1,0 +1,153 @@
+esphome:
+  name: scale-client
+  platform: ESP8266
+  board: nodemcu
+  
+globals:
+  - id: tara_value
+    type: float
+    restore_value: no
+    initial_value: '0.1' 
+  - id: weight_value
+    type: float
+    restore_value: no
+    initial_value: '0.1'
+  - id: target_weight
+    type: float
+    restore_value: no
+    initial_value: '30.0' 
+  - id: sensor_timer
+    type: float
+    restore_value: no
+    initial_value: '0' 
+ 
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  password: "13fdec32caf184dfd7d8a30e1602a80e"
+
+# Example configuration entry
+http_request:
+  useragent: esphome/device
+  timeout: 10s
+  
+web_server:
+  port: 80
+  
+
+wifi:
+  ssid: "Martin Router King"
+  password: "AndelUndIch1994"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Scale-Client Fallback Hotspot"
+    password: "kjt11MCetVAw"
+    
+font:
+  - file: 'stranger.ttf'
+    id: stranger
+    size: 16
+
+captive_portal:
+i2c:
+  sda: D2
+  scl: D3
+  scan: true
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    reset_pin: D7
+    address: 0x3C
+    lambda: |-
+      it.printf(0, 0, id(stranger),"Grind: %2.1f", id(weight_poti).state);
+      it.printf(0, 16, id(stranger),"Weight: %3.0f", id(scale_id).state);
+
+
+sensor:
+  - platform: adc
+    pin: A0
+    name: "weight_poti"
+    id: "weight_poti"
+    update_interval: 100ms
+    filters:
+      - calibrate_linear:
+          - 0.0117 -> 0
+          - 1  -> 20
+    unit_of_measurement: g
+    
+  - platform: hx711
+    id: "scale_id"
+    name: "scale"
+    dout_pin: D0
+    clk_pin: D1
+    gain: 128
+    update_interval: 100ms
+    filters:
+    - calibrate_linear:
+          - 393000  -> 0
+          - 500000  -> 244
+    - median:
+        window_size: 10
+        send_every: 4
+        send_first_at: 3
+    - lambda:  |-
+          return x - id(tara_value) ;
+    unit_of_measurement: g
+    on_value: 
+      then:
+       - lambda: |-
+          id(weight_value) = x;
+       - http_request.post:
+          url: !lambda |-
+           ESP_LOGI("main", "Value of scale: %f", x);
+           ESP_LOGI("main", "Target weight: %f", id(weight_poti).state);
+            if(x < id(weight_poti).state *0.85){
+              return "http://scale-server/switch/relay/turn_on";
+            } else if(x < id(weight_poti).state){
+              if(id(sensor_timer) <= 3){
+                ESP_LOGI("main", "Value of my sensor: %f", id(sensor_timer));
+                id(sensor_timer)+=1;
+                return "http://scale-server/switch/relay/turn_off"; 
+              }else if(id(sensor_timer) > 3){
+                id(sensor_timer)+=1;
+                ESP_LOGI("main", "Value of my sensor: %f", id(sensor_timer));
+                if(id(sensor_timer) > 6){
+                  id(sensor_timer) = 0;
+                }
+                return "http://scale-server/switch/relay/turn_on";
+              }
+            } else{
+              return "http://scale-server/switch/relay/turn_off";
+            }
+
+switch:
+  - platform: gpio
+    pin: 16
+    name: "relais-switch"
+    on_turn_on:
+      - http_request.post: http://scale-server/switch/relay/turn_on
+    on_turn_off:
+      - http_request.post: http://scale-server/switch/relay/turn_off
+  - platform: gpio
+    pin: 16
+    name: "tara-switch"
+    on_turn_on:
+      then:
+      - lambda: |-
+          id(tara_value) += id(weight_value);
+          ESP_LOGI("main", "tara_value: on");
+    on_turn_off:
+     then:
+      - lambda: |-
+          id(tara_value) += id(weight_value);
+          ESP_LOGI("main", "tara_value: on");
+
+
+      
