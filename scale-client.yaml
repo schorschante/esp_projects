@@ -113,7 +113,7 @@ sensor:
           url: !lambda |-
            ESP_LOGI("main", "Value of scale: %f", x);
            ESP_LOGI("main", "Target weight: %f", id(weight_poti).state);
-           if(!id(scale_mode) || !id(ready_to_grind).state){
+           if(!id(scale_mode)){
               return "http://scale-server/switch/relay/turn_off";
            }
            
@@ -133,6 +133,7 @@ sensor:
                 return "http://scale-server/switch/relay/turn_on";
               }
             } else{
+              id(scale_mode) = false;
               return "http://scale-server/switch/relay/turn_off";
             }
 
@@ -155,11 +156,5 @@ binary_sensor:
           id(tara_value) += id(weight_value);
           ESP_LOGI("main", "tara_value: on");
           
-switch:
-  - platform: gpio
-    name: "ready_to_grind"
-    id: "ready_to_grind"
-    pin: 12
-
 
       
