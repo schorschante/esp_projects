@@ -6,20 +6,20 @@ esphome:
 globals:
   - id: tara_value
     type: float
-    restore_value: no
+    restore_value: yes
     initial_value: '0.1' 
   - id: weight_value
     type: float
     restore_value: no
     initial_value: '0.1'
-  - id: target_weight
-    type: float
-    restore_value: no
-    initial_value: '30.0' 
   - id: sensor_timer
     type: float
     restore_value: no
     initial_value: '0' 
+  - id: scale_mode
+    type: bool
+    restore_value: yes
+    initial_value: 'false' 
  
 
 # Enable logging
@@ -68,6 +68,11 @@ display:
     lambda: |-
       it.printf(0, 0, id(stranger),"Grind: %2.1f", id(weight_poti).state);
       it.printf(0, 16, id(stranger),"Weight: %3.0f", id(scale_id).state);
+      if(id(scale_mode)){
+        it.printf(0, 32, id(stranger),"Mode: Scale");
+      }else{
+        it.printf(0, 32, id(stranger),"Mode: Timer");
+      }
 
 
 sensor:
@@ -108,6 +113,10 @@ sensor:
           url: !lambda |-
            ESP_LOGI("main", "Value of scale: %f", x);
            ESP_LOGI("main", "Target weight: %f", id(weight_poti).state);
+           if(!id(scale_mode) || !id(ready_to_grind).state){
+              return "http://scale-server/switch/relay/turn_off";
+           }
+           
             if(x < id(weight_poti).state *0.85){
               return "http://scale-server/switch/relay/turn_on";
             } else if(x < id(weight_poti).state){
@@ -127,27 +136,30 @@ sensor:
               return "http://scale-server/switch/relay/turn_off";
             }
 
-switch:
+binary_sensor:
   - platform: gpio
-    pin: 16
-    name: "relais-switch"
-    on_turn_on:
-      - http_request.post: http://scale-server/switch/relay/turn_on
-    on_turn_off:
-      - http_request.post: http://scale-server/switch/relay/turn_off
+    pin: 14
+    name: "grind_mode"
+    id: "grind_mode"
+    on_press:
+      then:
+      - lambda: |-
+          id(scale_mode) = !id(scale_mode);
   - platform: gpio
-    pin: 16
-    name: "tara-switch"
-    on_turn_on:
+    pin: 2
+    name: "tara_switch"
+    id: "tara_switch"
+    on_press:
       then:
       - lambda: |-
           id(tara_value) += id(weight_value);
           ESP_LOGI("main", "tara_value: on");
-    on_turn_off:
-     then:
-      - lambda: |-
-          id(tara_value) += id(weight_value);
-          ESP_LOGI("main", "tara_value: on");
+          
+switch:
+  - platform: gpio
+    name: "ready_to_grind"
+    id: "ready_to_grind"
+    pin: 12
 
 
       
